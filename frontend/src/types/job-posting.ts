@@ -2,7 +2,7 @@ export interface JobPosting {
 	id: string;
 	job_title: string;
 	salary: number;
-	accommodation_support: bool;
+accommodation_support: boolean;
 	description: string;
 	contact_email: string;
 	location: string;
