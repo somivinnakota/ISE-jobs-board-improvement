@@ -12,9 +12,16 @@ import kotlinx.datetime.Clock
 import kotlin.time.Duration.Companion.seconds
 
 object SupabaseClientProvider {
-    private val env         = dotenv()
-    private val supabaseUrl = env["SUPABASE_URL"]!!
-    private val anonKey     = env["SUPABASE_ANON_KEY"]!!
+   private val env = dotenv()
+
+init {
+    println("Working directory: " + System.getProperty("user.dir"))
+    println("SUPABASE_URL = " + env["SUPABASE_URL"])
+    println("SUPABASE_ANON_KEY exists = " + (env["SUPABASE_ANON_KEY"] != null))
+}
+
+private val supabaseUrl = env["SUPABASE_URL"] ?: error("SUPABASE_URL not found")
+private val anonKey = env["SUPABASE_ANON_KEY"] ?: error("SUPABASE_ANON_KEY not found")
 
     /**
      *  Public client: sends only

@@ -1,84 +1,51 @@
 import { createClient } from "@/lib/server";
-import { env } from "@/env";
-
-const url = env.NEXT_PUBLIC_API_URL
 
 export async function getRole() {
-    let role = "";
-    let userID = "";
+  console.log("=== GET ROLE CALLED ===");
+  const supabase = await createClient();
+  
+  // Use getUser() instead of getSession() - more secure and reliable
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  
+  console.log("User exists:", !!user);
+  console.log("User ID:", user?.id);
 
-    const supabase = await createClient();
-    const session = await supabase.auth.getSession();
+  if (!user) return null;
 
-    if (session.data.session) {
-        userID = session.data.session.user.id;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
 
-        const res = await fetch(`${url}/account/role/${userID}`, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${session.data.session.access_token}`,
-            },
-        });
+  console.log("Profile data:", data);
+  console.log("Profile error:", error?.message);
 
-        if (!res.ok) {
-            console.warn(
-                "metadata fetch failed:",
-                res.status,
-                await res.text(),
-            );
-            return;
-        }
+  if (error || !data) return null;
 
-        const roleBody = await res.json();
-
-        role = roleBody.role;
-        return role;
-    }
-    return null
+  return data.role as string;
 }
 
 export async function getUserId() {
-    const supabase = await createClient();
-    let userId: string
-
-    const session = await supabase.auth.getSession();
-
-    if (session.data.session) {
-        userId = session.data.session.user.id;
-        return userId
-    }
-
-    return null
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  return user.id;
 }
 
-export async function getCompanyIdFromUserId(
-    userId: string
-): Promise<string | null> {
-    const supabase = await createClient();
-    const {
-        data: { session },
-    } = await supabase.auth.getSession();
+export async function getCompanyIdFromUserId(userId: string): Promise<string | null> {
+  const supabase = await createClient();
 
-    const token = session?.access_token;
-    if (!token) {
-        throw new Error("No token found while trying to fetch company by userid")
-    }
+  const { data, error } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", userId)
+    .single();
 
-    const res = await fetch(`${url}/company-by-userid/${userId}`, {
-        method: "GET",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-        },
-    });
+  if (error || !data) {
+    console.warn("Could not fetch company:", error?.message);
+    return null;
+  }
 
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error("metadata fetch failed:" + res.status + text);
-    }
-
-    const body = await res.json();
-    return (body.company_id as string) ?? null;
+  return data.id as string;
 }
-
