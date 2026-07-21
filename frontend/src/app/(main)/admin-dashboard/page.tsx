@@ -4,6 +4,8 @@ import { LayoutDashboard, UserPlus, GitCompare, CheckCircle, XCircle, Archive, D
 import UpcomingDeadlines from "@/components/admin/upcoming-deadlines";
 import { createClient } from "@/lib/server";
 import { revalidatePath } from "next/cache";
+import ExportButton from "@/components/admin/export-button"
+
 
 async function approvePosting(formData: FormData) {
   'use server';
@@ -45,6 +47,10 @@ async function toggleRankingPeriod(formData: FormData) {
     })
     .eq('residency', residency);
   revalidatePath('/admin-dashboard');
+}
+async function exportSubmissions() {
+  'use server';
+  // Handled client-side — see ExportButton component
 }
 
 export default async function AdminDashboard() {
@@ -190,7 +196,10 @@ export default async function AdminDashboard() {
 
       {/* Student submission monitor — NEW */}
       <div className="bg-black border border-neutral-800 p-6 mb-10">
-        <h2 className="text-2xl font-bold text-white mb-6">Student Submissions</h2>
+        <div className="flex items-center justify-between mb-6">
+  <h2 className="text-2xl font-bold text-white">Student Submissions</h2>
+  <ExportButton />
+</div>
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-neutral-900 p-4 text-center">
             <p className="text-xs text-neutral-500 font-mono uppercase mb-1">Total Students</p>
