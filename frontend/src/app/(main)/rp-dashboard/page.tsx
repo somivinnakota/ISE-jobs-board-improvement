@@ -29,11 +29,11 @@ export default async function RPDashboard() {
   }
 
   // Get all job postings for this company
-  const { data: jobPostings } = await supabase
-    .from("job_postings")
-    .select("id, job_title, residency, position_count, salary, status, created_at")
-    .eq("company_id", company.id)
-    .order("created_at", { ascending: false });
+const { data: jobPostings } = await supabase
+  .from("job_postings")
+  .select("id, job_title, residency, position_count, salary, status, created_at, view_count")
+  .eq("company_id", company.id)
+  .order("created_at", { ascending: false });
 
   const postings = jobPostings ?? [];
 
@@ -171,6 +171,7 @@ export default async function RPDashboard() {
                   <th className="pb-3 pr-4">Positions</th>
                   <th className="pb-3 pr-4">Salary</th>
                   <th className="pb-3 pr-4">Status</th>
+                  <th className="pb-3 pr-4">Views</th>
                   <th className="pb-3 pr-4">Submitted</th>
                   <th className="pb-3">Actions</th>
                 </tr>
@@ -187,8 +188,13 @@ export default async function RPDashboard() {
                         {posting.status}
                       </span>
                     </td>
-                    <td className="py-3 pr-4 text-neutral-500">
-                      {new Date(posting.created_at).toLocaleDateString()}
+                    <td className="py-3 pr-4 text-neutral-400">
+                    <span className="flex items-center gap-1">
+                    <Eye size={13} /> {(posting as any).view_count ?? 0}
+                  </span>
+                  </td>
+                 <td className="py-3 pr-4 text-neutral-500">
+                   {new Date(posting.created_at).toLocaleDateString()}
                     </td>
                     <td className="py-3">
                       <Link
