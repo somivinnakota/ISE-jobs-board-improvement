@@ -4,130 +4,172 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/client";
 import LoadingSpinner from "@/components/loading-spinner";
-import { env } from "@/env";
 
 export default function NewStudentsPage() {
-    const router = useRouter();
-    const supabase = createClient();
-    const [rawEmails, setRawEmails] = useState("");
-    const [token, setToken] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const [rawEmails, setRawEmails] = useState("");
+  const [year, setYear] = useState("1");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [results, setResults] = useState<{ email: string; status: string }[]>([]);
 
-    useEffect(() => {
-        const checkAuth = async () => {
-            const {
-                data: { session },
-                error,
-            } = await supabase.auth.getSession();
-            if (error || !session) {
-                alert("Not authenticated");
-                router.push("/login");
-                return;
-            }
-            setToken(session.access_token);
-            setLoading(false);
-        };
-        checkAuth();
-    }, [router, supabase]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!token) {
-            alert("Not authenticated");
-            return;
-        }
-
-        // Parse textarea: split on commas/newlines
-        const listOfEmails = rawEmails
-            .split(/[\n,]+/)
-            .map((x) => x.trim())
-            .filter((x) => x.length > 0);
-
-        if (listOfEmails.length === 0) {
-            alert("Please enter at least one email.");
-            return;
-        }
-
-        try {
-            const url = env.NEXT_PUBLIC_API_URL;
-            const res = await fetch(`${url}/accepted-student-emails`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({ emails: listOfEmails }),
-                },
-            );
-
-            if (res.ok) {
-                alert("All students added successfully!");
-                router.push("/admin-dashboard");
-            } else {
-                console.error("HTTP Status:", res.status, res.statusText);
-
-                const text = await res.text();
-                console.error("Response body:", text);
-
-                let errorMessage = res.statusText;
-                if (text) {
-                    try {
-                        const data = JSON.parse(text);
-                        errorMessage = data.message || res.statusText;
-                    } catch (e) {
-                        errorMessage = text;
-                    }
-                }
-
-                alert("Failed to add students: " + errorMessage);
-            }
-        } catch (err) {
-            alert("Request failed: " + err);
-        }
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert("Not authenticated");
+        router.push("/auth/login");
+        return;
+      }
+      setLoading(false);
     };
+    checkAuth();
+  }, [router]);
 
-    if (loading) {
-        return (
-            <main className="pt-24 px-6 max-w-xl mx-auto">
-                <LoadingSpinner />
-            </main>
-        );
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setResults([]);
+
+    const listOfEmails = rawEmails
+      .split(/[\n,]+/)
+      .map((x) => x.trim())
+      .filter((x) => x.length > 0);
+
+    if (listOfEmails.length === 0) {
+      alert("Please enter at least one email.");
+      setSubmitting(false);
+      return;
     }
 
-    return (
-        <main className="pt-24 px-6 max-w-xl mx-auto">
-            <h1 className="text-2xl font-bold mb-4">Add New Student Emails</h1>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <label className="block mb-1 font-medium">
-                        Student Emails (one per line or comma separated)
-                    </label>
-                    <textarea
-                        rows={6}
-                        className="w-full p-2 border"
-                        placeholder="Enter emails here"
-                        value={rawEmails}
-                        onChange={(e) => setRawEmails(e.target.value)}
-                        required
-                    />
-                </div>
-                <div className="flex gap-4 pt-2">
-                    <button
-                        type="submit"
-                        className="bg-green-600 text-white px-4 py-2 hover:bg-green-700"
-                    >
-                        Submit All
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => router.push("/admin-dashboard")}
-                        className="bg-gray-600 text-white px-4 py-2 hover:bg-gray-700"
-                    >
-                        Cancel
-                    </button>
-                </div>
-            </form>
-        </main>
-    );
+    const supabase = createClient();
+    const resultLog: { email: string; status: string }[] = [];
+
+    for (const email of listOfEmails) {
+      // Check if a user with this email already exists in auth.users
+      // We do this by checking the profiles table
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .single();
+
+      if (existing) {
+        // Update their role and year if they already exist
+        await supabase
+          .from("profiles")
+          .update({ role: "student", year: Number(year) })
+          .eq("email", email);
+        resultLog.push({ email, status: "updated" });
+      } else {
+        // Insert a placeholder profile — they'll claim it when they sign up
+        // We use a deterministic approach: insert with email, no id yet
+        // When they sign up Supabase will create the auth user
+        // For now we store them in a pending_students table
+        const { error } = await supabase
+          .from("pending_students")
+          .insert({ email, year: Number(year) });
+
+        if (error) {
+          resultLog.push({ email, status: `failed: ${error.message}` });
+        } else {
+          resultLog.push({ email, status: "added to pending" });
+        }
+      }
+    }
+
+    setResults(resultLog);
+    setSubmitting(false);
+  };
+
+  if (loading) {
+    return <main className="pt-28 px-6 max-w-xl mx-auto"><LoadingSpinner /></main>;
+  }
+
+  return (
+    <main className="pt-28 px-6 max-w-2xl mx-auto pb-16">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-white mb-1">Add New Students</h1>
+        <p className="text-neutral-400 text-sm font-mono">
+          Students will be added as pending until they sign up with their email.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label className="block mb-1 font-medium text-white">Year Group</label>
+          <select
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white outline-none focus:border-white"
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+          >
+            <option value="1">Year 1</option>
+            <option value="2">Year 2</option>
+            <option value="3">Year 3</option>
+            <option value="4">Year 4</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block mb-1 font-medium text-white">
+            Student Emails
+          </label>
+          <p className="text-neutral-500 text-xs mb-2">One per line or comma separated</p>
+          <textarea
+            rows={8}
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white placeholder-neutral-500 outline-none focus:border-white font-mono text-sm"
+            placeholder="student1@studentmail.ul.ie&#10;student2@studentmail.ul.ie&#10;student3@studentmail.ul.ie"
+            value={rawEmails}
+            onChange={(e) => setRawEmails(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex-1 bg-white text-black py-3 font-semibold hover:bg-neutral-200 disabled:opacity-50"
+          >
+            {submitting ? "Adding students..." : "Add Students"}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/admin-dashboard")}
+            className="bg-neutral-800 text-white px-6 py-3 hover:bg-neutral-700 border border-neutral-600"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+
+      {/* Results */}
+      {results.length > 0 && (
+        <div className="mt-8 bg-black border border-neutral-800 p-6">
+          <h2 className="text-lg font-bold text-white mb-4 font-mono">Results</h2>
+          <div className="space-y-2">
+            {results.map((r, i) => (
+              <div key={i} className="flex items-center justify-between text-sm font-mono">
+                <span className="text-neutral-300">{r.email}</span>
+                <span className={
+                  r.status === "updated" ? "text-blue-400" :
+                  r.status === "added to pending" ? "text-green-400" :
+                  "text-red-400"
+                }>
+                  {r.status}
+                </span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => router.push("/admin-dashboard")}
+            className="mt-6 w-full bg-white text-black py-2 font-semibold hover:bg-neutral-200"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      )}
+    </main>
+  );
 }

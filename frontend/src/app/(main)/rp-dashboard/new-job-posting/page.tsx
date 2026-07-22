@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { env } from '@/env';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/client';
 import { Session } from '@supabase/supabase-js';
-import { getUserIdClient, getCompanyIdFromUserIdClient } from '@/app/api/client-user';
 import LoadingSpinner from '@/components/loading-spinner';
 
 export default function NewJobPostingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const duplicateId = searchParams.get('duplicate');
 
   // Form state
   const [jobTitle, setJobTitle] = useState('');
@@ -19,209 +19,253 @@ export default function NewJobPostingPage() {
   const [contactEmail, setContactEmail] = useState('');
   const [location, setLocation] = useState('');
   const [positionCount, setPositionCount] = useState('');
-  const [residency, setResidency] = useState('');
+  const [residency, setResidency] = useState('1');
+  const [isDraft, setIsDraft] = useState(false);
 
   // Auth / company context
   const [session, setSession] = useState<Session | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [isRepost, setIsRepost] = useState(false);
 
   useEffect(() => {
     async function fetchContext() {
       const supabase = createClient();
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setLoading(false); return; }
+      setSession(session);
 
-      if (error) {
-        console.error('Error fetching session:', error.message);
-      } else {
-        setSession(session);
-      }
+      // Get company for this user
+      const { data: company } = await supabase
+        .from('companies')
+        .select('id')
+        .eq('created_by', session.user.id)
+        .single();
 
-      const userId = await getUserIdClient();
-      if (userId) {
-        const cid = await getCompanyIdFromUserIdClient(userId);
-        if (cid) {
-          setCompanyId(cid);
-        } else {
-          console.error('No company ID found for user:', userId);
+      if (company) setCompanyId(company.id);
+
+      // If duplicating a previous posting, pre-fill the form
+      if (duplicateId) {
+        const { data: existing } = await supabase
+          .from('job_postings')
+          .select('*')
+          .eq('id', duplicateId)
+          .single();
+
+        if (existing) {
+          setJobTitle(existing.job_title ?? '');
+          setSalary(existing.salary?.toString() ?? '');
+          setAccommodationSupport(existing.accommodation_support ?? false);
+          setDescription(existing.description ?? '');
+          setContactEmail(existing.contact_email ?? '');
+          setLocation(existing.location ?? '');
+          setPositionCount(existing.position_count?.toString() ?? '');
+          setResidency(existing.residency ?? '1');
+          setIsRepost(true);
         }
-      } else {
-        console.error('No user ID found');
       }
 
       setLoading(false);
     }
 
     fetchContext();
-  }, []);
+  }, [duplicateId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent, asDraft = false) {
     e.preventDefault();
-
-    if (!session) {
-      alert('You must be logged in.');
-      return;
-    }
-    if (!companyId) {
-      alert('Unable to determine company ID.');
+    if (!session || !companyId) {
+      alert('You must be logged in with a company account.');
       return;
     }
 
+    setSubmitting(true);
     try {
-      const url = env.NEXT_PUBLIC_API_URL!;
-      const token = session.access_token;
+      const supabase = createClient();
 
-      const payload = {
+      const { error } = await supabase.from('job_postings').insert({
+        company_id: companyId,
         job_title: jobTitle,
-        salary: Number(salary),
+        salary: salary ? Number(salary) : null,
         accommodation_support: accommodationSupport,
         description,
         contact_email: contactEmail,
         location,
         position_count: Number(positionCount),
         residency,
-      };
-
-      const res = await fetch(`${url}/new-job-posting/${companyId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
+        status: asDraft ? 'draft' : 'pending',
       });
 
-      console.log('POST /new-job-posting status:', res.status);
+      if (error) throw error;
 
-      if (!res.ok) {
-        const text = await res.text();
-        console.error('Failed to create job posting:', res.status, text);
-        alert('Failed to create job posting');
-        return;
-      }
-
-      alert('Job posting created successfully');
-      router.push('/admin-dashboard');
+      alert(asDraft
+        ? 'Draft saved! You can submit it later from your dashboard.'
+        : 'Job posting submitted for admin approval!'
+      );
+      router.push('/rp-dashboard');
     } catch (err) {
-      console.error('Request failed:', err);
-      alert('Request failed: ' + (err as Error).message);
+      console.error('Failed to create posting:', err);
+      alert('Failed to create job posting. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
-  };
+  }
 
   if (loading) {
+    return <main className="pt-28 px-6 max-w-xl mx-auto"><LoadingSpinner /></main>;
+  }
+
+  if (!companyId) {
     return (
-      <main className="pt-24 px-6 max-w-xl mx-auto">
-        <LoadingSpinner />
+      <main className="pt-28 px-6 max-w-xl mx-auto">
+        <div className="bg-amber-900/30 border border-amber-600 text-amber-400 p-6">
+          <p className="font-semibold">No company found for your account.</p>
+          <p className="text-sm mt-1">Please contact an ISE administrator.</p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="pt-24 px-6 max-w-xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Create New Job Posting</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <main className="pt-28 px-6 max-w-xl mx-auto pb-16">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-white mb-1">
+          {isRepost ? 'Repost Job Listing' : 'New Job Posting'}
+        </h1>
+        {isRepost && (
+          <p className="text-amber-400 text-sm font-mono">
+            Pre-filled from a previous posting — update as needed before submitting.
+          </p>
+        )}
+      </div>
+
+      <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-5">
+
         <div>
-          <label className="block mb-1 font-medium">Job Title</label>
+          <label className="block mb-1 font-medium text-white">Job Title</label>
           <input
             type="text"
-            className="w-full p-2 border"
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white focus:border-white outline-none"
             value={jobTitle}
             onChange={(e) => setJobTitle(e.target.value)}
+            placeholder="e.g. Software Engineer Intern"
             required
           />
         </div>
 
         <div>
-          <label className="block mb-1 font-medium">Residency Type</label>
-          <input
-            type="text"
-            className="w-full p-2 border"
+          <label className="block mb-1 font-medium text-white">Residency</label>
+          <select
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white focus:border-white outline-none"
             value={residency}
             onChange={(e) => setResidency(e.target.value)}
             required
+          >
+            <option value="1">Residency 1</option>
+            <option value="2">Residency 2</option>
+            <option value="1+2">Residency 1+2</option>
+            <option value="3">Residency 3</option>
+            <option value="4">Residency 4</option>
+            <option value="5">Residency 5</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block mb-1 font-medium text-white">Monthly Salary (€)</label>
+          <input
+            type="number"
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white focus:border-white outline-none"
+            value={salary}
+            onChange={(e) => setSalary(e.target.value)}
+            placeholder="e.g. 2000"
           />
         </div>
 
         <div>
-          <label className="block mb-1 font-medium">Salary</label>
+          <label className="block mb-1 font-medium text-white">Location</label>
           <input
-            type="number"
-            className="w-full p-2 border"
-            value={salary}
-            onChange={(e) => setSalary(e.target.value)}
+            type="text"
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white focus:border-white outline-none"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="e.g. Dublin"
             required
           />
         </div>
 
-        <div className="flex items-center">
+        <div>
+          <label className="block mb-1 font-medium text-white">Number of Positions</label>
+          <input
+            type="number"
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white focus:border-white outline-none"
+            value={positionCount}
+            onChange={(e) => setPositionCount(e.target.value)}
+            placeholder="e.g. 2"
+            required
+            min="1"
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 font-medium text-white">Description</label>
+          <textarea
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white focus:border-white outline-none"
+            rows={5}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Describe the role, responsibilities, and requirements..."
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block mb-1 font-medium text-white">Contact Email</label>
+          <input
+            type="email"
+            className="w-full p-3 bg-neutral-900 border border-neutral-700 text-white focus:border-white outline-none"
+            value={contactEmail}
+            onChange={(e) => setContactEmail(e.target.value)}
+            placeholder="talent@company.com"
+          />
+        </div>
+
+        <div className="flex items-center gap-3 p-3 bg-neutral-900 border border-neutral-700">
           <input
             id="accommodationSupport"
             type="checkbox"
-            className="mr-2"
+            className="w-4 h-4"
             checked={accommodationSupport}
             onChange={(e) => setAccommodationSupport(e.target.checked)}
           />
-          <label htmlFor="accommodationSupport" className="font-medium">
-            Accommodation Support Provided
+          <label htmlFor="accommodationSupport" className="font-medium text-white">
+            Accommodation support provided
           </label>
         </div>
 
-        <div>
-          <label className="block mb-1 font-medium">Description</label>
-          <textarea
-            className="w-full p-2 border"
-            rows={4}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            required
-          />
+        <div className="bg-neutral-900 border border-neutral-700 p-4 text-sm text-neutral-400">
+          <p>⚠️ Submitted postings go to <span className="text-white">pending review</span> before appearing on the jobs board. You'll be notified once approved.</p>
         </div>
 
-        <div>
-          <label className="block mb-1 font-medium">Contact Email</label>
-          <input
-            type="email"
-            className="w-full p-2 border"
-            value={contactEmail}
-            onChange={(e) => setContactEmail(e.target.value)}
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block mb-1 font-medium">Location</label>
-          <input
-            type="text"
-            className="w-full p-2 border"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block mb-1 font-medium">Number of Positions</label>
-          <input
-            type="number"
-            className="w-full p-2 border"
-            value={positionCount}
-            onChange={(e) => setPositionCount(e.target.value)}
-            required
-          />
-        </div>
-
-        <div className="flex gap-4 pt-2">
+        <div className="flex gap-3 pt-2">
           <button
             type="submit"
-            className="bg-green-600 text-white px-4 py-2 hover:bg-green-700"
-            disabled={!session || !companyId}
+            disabled={submitting}
+            className="flex-1 bg-white text-black py-3 font-semibold hover:bg-neutral-200 disabled:opacity-50"
           >
-            Submit
+            {submitting ? 'Submitting...' : 'Submit for Approval'}
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={(e) => handleSubmit(e as any, true)}
+            className="flex-1 bg-neutral-800 text-white py-3 font-semibold hover:bg-neutral-700 disabled:opacity-50 border border-neutral-600"
+          >
+            Save as Draft
           </button>
           <button
             type="button"
             onClick={() => router.push('/rp-dashboard')}
-            className="bg-gray-600 text-white px-4 py-2 hover:bg-gray-700"
+            className="bg-neutral-900 text-neutral-400 px-6 py-3 hover:text-white border border-neutral-700"
           >
             Cancel
           </button>

@@ -3,6 +3,9 @@ import { SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { BriefcaseBusiness, ExternalLink, HandCoins, Heart, House, MapPin, User, Users } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect } from "react";
+import { createClient } from "@/lib/client";
+
 
 interface JobSheetProps {
   job: JobPosting
@@ -11,6 +14,14 @@ interface JobSheetProps {
 }
 
 export const JobPostingSheetContents = ({ job, isFavourited, setIsFavourited }: JobSheetProps) => {
+  useEffect(() => {
+    async function incrementView() {
+      const supabase = createClient()
+      await supabase.rpc('increment_view_count', { posting_id: job.id })
+    }
+    incrementView()
+  }, [job.id])
+
   return (
     <SheetContent className="w-[9999px] max-w-full sm:!max-w-[600px]" side="right">
       <SheetHeader>

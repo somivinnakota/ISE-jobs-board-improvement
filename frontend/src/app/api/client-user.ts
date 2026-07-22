@@ -1,112 +1,63 @@
 import { createClient } from "@/lib/client";
-import { env } from "@/env";
-
-const url = env.NEXT_PUBLIC_API_URL
 
 export async function getRoleClient() {
-    let role = "";
-    let userID = "";
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
 
-    const supabase = createClient();
-    const session = await supabase.auth.getSession();
+  if (!session) return null;
 
-    if (session.data.session) {
-        userID = session.data.session.user.id;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", session.user.id)
+    .single();
 
-        const res = await fetch(`${url}/account/role/${userID}`, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${session.data.session.access_token}`,
-            },
-        });
+  if (error || !data) {
+    console.warn("Could not fetch role:", error?.message);
+    return null;
+  }
 
-        if (!res.ok) {
-            console.warn(
-                "metadata fetch failed:",
-                res.status,
-                await res.text(),
-            );
-            return;
-        }
-
-        const roleBody = await res.json();
-
-        role = roleBody.role;
-        return role;
-    }
-    return null
+  return data.role as string;
 }
 
 export async function getUserIdClient() {
-    const supabase = await createClient();
-    let userId: string
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
 
-    const session = await supabase.auth.getSession();
-
-    if (session.data.session) {
-        userId = session.data.session.user.id;
-        return userId
-    }
-
-    return null
+  if (!session) return null;
+  return session.user.id;
 }
 
-export async function getCompanyIdFromUserIdClient(
-  userId: string
-): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+export async function getCompanyIdFromUserIdClient(userId: string): Promise<string | null> {
+  const supabase = createClient();
 
-  const token = session?.access_token;
-  if (!token) {
-    throw new Error("No token found while trying to fetch company by userid")
+  const { data, error } = await supabase
+    .from("companies")
+    .select("id")
+    .eq("created_by", userId)
+    .single();
+
+  if (error || !data) {
+    console.warn("Could not fetch company:", error?.message);
+    return null;
   }
 
-  const res = await fetch(`${url}/company-by-userid/${userId}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error("metadata fetch failed:" + res.status + text);
-  }
-
-  const body = await res.json();
-  return (body.company_id as string) ?? null;
+  return data.id as string;
 }
 
+export async function getStudentYearClient(studentId: string): Promise<number | null> {
+  const supabase = createClient();
 
-export async function getStudentYearClient(studentId: string) {
-  const id = await getUserIdClient()
-  const supabase = await createClient()
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  
-  try{
-    const res = await fetch(`${url}/students/${id}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type' : 'application/json',
-        'Authorization' : `Bearer ${session?.access_token}`
-      }
-    })
-    if (!res.ok) {
-    const text = await res.text();
-    throw new Error("metadata fetch failed:" + res.status + text);
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("year")
+    .eq("id", studentId)
+    .single();
+
+  if (error || !data) {
+    console.warn("Could not fetch student year:", error?.message);
+    return null;
   }
 
-  const body = await res.json();
-  return (body.year as number) ?? null;
-  } catch {
-    throw new Error("Error fetching student year")
-  }
+  return data.year as number;
 }
-

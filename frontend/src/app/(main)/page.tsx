@@ -51,10 +51,10 @@ export default function Home() {
               Job Postings
             </FloatingLink>
 
-            <FloatingLink href="/choose-rankings">
-              <ListOrdered size={22} className="min-h-5 min-w-5 text-sm transition-all duration-100 group-hover:scale-110" />
-              Rank Your Choices
-            </FloatingLink>
+           <FloatingLink href="/pre-interview-rankings">
+           <ListOrdered size={22} className="min-h-5 min-w-5 text-sm transition-all duration-100 group-hover:scale-110" />
+            Rank Your Choices
+           </FloatingLink>
 
             <FloatingLink href="edit-profile">
               <UserPen size={18} className="min-h-5 min-w-5 text-sm transition-all duration-100 group-hover:scale-110" />

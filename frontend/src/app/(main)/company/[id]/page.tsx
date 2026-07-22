@@ -1,174 +1,124 @@
-import { getJobPostings, getJobPostingsByCompany } from "@/app/api/utils";
-import { columns } from "@/components/company/posting-table/columns";
-import { JobPostingsDataTable } from "@/components/company/posting-table/data-table";
-import LoadingSpinner from "@/components/loading-spinner";
-import { Button } from "@/components/ui/button";
-import { JobCard } from "@/components/ui/job-card";
-import { CandidatesTable } from "@/components/company/candidates-table";
-import { createClient } from "@/lib/server";
-import { CompanyJoinedWithProfile } from "@/types/company";
-import { JobPosting } from "@/types/job-posting";
-import { Metadata } from "next";
-import Link from "next/link";
-import { Suspense } from "react";
-import { env } from "@/env";
+import { createClient } from "@/lib/server"
+import { notFound } from "next/navigation"
+import Link from "next/link"
+import { Globe, MapPin, Users, EuroIcon, House } from "lucide-react"
 
-export async function generateMetadata({
-    params,
+export default async function CompanyProfilePage({
+  params,
 }: {
-    params: Promise<{ id: string }>;
-}): Promise<Metadata> {
-    const { id } = await params;
-
-    try {
-        const supabase = await createClient();
-        const {
-            data: { session },
-        } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const url = process.env.NEXT_PUBLIC_API_URL;
-
-        const res = await fetch(`${url}/company/profile/${id}`, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-        });
-
-        if (!res.ok) {
-            console.warn(
-                "metadata fetch failed:",
-                res.status,
-                await res.text(),
-            );
-            return {
-                title: "404 - ISE Jobs Board",
-                description: "Company not found!",
-            };
-        }
-
-        const company: CompanyJoinedWithProfile = await res.json();
-
-        return {
-            title: `${company.name} - ISE Jobs Board`,
-            description: `View ${company.name}'s company information.`,
-        };
-    } catch (e) {
-        console.error("Error fetching company data for metadata:", e);
-        return {
-            title: "Company Profile",
-            description: "Company profile page",
-        };
-    }
-}
-
-function JobPostings({ jobPostings }: { jobPostings: JobPosting[] }) {
-    if (jobPostings.length == 0) {
-        return (
-            <div className="w-full flex p-8 justify-center bg-white">
-                no postings found
-            </div>
-        );
-    }
-
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {jobPostings.map((job) => (
-                <JobCard key={job.id} job={job} />
-            ))}
-        </div>
-    );
-}
-
-const FallbackPage = () => {
-    return <LoadingSpinner />;
-};
-
-async function CompanyDetails({ id }: { id: string }) {
-    // fetch with auth
-    const supabase = await createClient();
-    const {
-        data: { session },
-    } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    const url = process.env.NEXT_PUBLIC_API_URL;
-
-    const jobPostings = await getJobPostingsByCompany(id);
-    jobPostings.sort((jpA, jpB) => jpA.id.localeCompare(jpB.id));
-
-    const res = await fetch(`${url}/company/profile/${id}`, {
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-        },
-    });
-
-    if (!res.ok) {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <div className="flex flex-col items-center bg-white p-8">
-                    <p>company not found</p>
-                    <Link
-                        className="mt-2 bg-black p-3 text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
-                        href="/"
-                    >
-                        return home
-                    </Link>
-                </div>
-            </div>
-        );
-    }
-
-    const company: CompanyJoinedWithProfile = await res.json();
-
-    return (
-        <div className="flex w-screen flex-col px-8 pt-16 md:px-16 md:pt-32">
-            <div className="relative">
-                <img
-                    className="h-56 w-full"
-                    src={company.company_profile.banner_image}
-                />
-                <img
-                    className="absolute -bottom-12 left-12 max-h-32 max-w-32 outline outline-8 outline-white dark:outline-black"
-                    src={company.company_profile.avatar}
-                />
-                <h1 className="absolute -bottom-10 left-[11.5rem] bg-white p-4 px-6 pt-10 text-6xl dark:bg-black md:text-7xl">{company.name}</h1>
-            </div>
-
-            <div className="mt-16 flex w-fit flex-col bg-white px-12 py-2 dark:bg-black">
-                <span className="-mt-2 flex flex-row text-xl">
-                    <h2 className="">
-                        {company.company_profile.subtitle}
-                    </h2>
-                </span>
-            </div>
-
-            <div className="mx-12 mt-8 border-2 border-black bg-white p-4 dark:border-white dark:bg-black">
-                <h2 className="text-2xl font-bold">Overview</h2>
-                <p className="whitespace-pre-line font-sans text-sm md:text-base">
-                    {company.company_profile.description}
-                </p>
-            </div>
-
-            <div className="mx-12 mt-4 p-4 border-2 border-black bg-white dark:border-white dark:bg-black">
-                <h2 className="text-2xl font-bold mb-2">Job Postings</h2>
-                <JobPostings jobPostings={jobPostings} />
-            </div>
-        </div>
-    );
-}
-
-export default async function Page({
-    params,
-}: {
-    params: Promise<{ id: string }>;
+  params: Promise<{ id: string }>
 }) {
-    const { id } = await params;
+  const { id } = await params
+  const supabase = await createClient()
 
-    return (
-        <Suspense fallback={<FallbackPage />}>
-            <CompanyDetails id={id} />
-        </Suspense>
-    );
+  const { data: company, error } = await supabase
+    .from("companies")
+    .select("id, name, website, description, company_profiles ( avatar, culture_notes )")
+    .eq("id", id)
+    .single()
+
+  if (error || !company) notFound()
+
+  const companyData = company as {
+    id: string
+    name: string
+    website: string
+    description: string
+    company_profiles: { avatar: string; culture_notes: string }[]
+  }
+
+  const { data: postings } = await supabase
+    .from("job_postings")
+    .select("id, job_title, location, residency, salary, position_count, accommodation_support, description")
+    .eq("company_id", id)
+    .eq("status", "approved")
+    .order("residency")
+
+  const profile = companyData.company_profiles?.[0]
+
+  return (
+    <div className="pt-28 px-8 pb-16 max-w-5xl mx-auto">
+      <div className="flex items-start gap-6 mb-10">
+        <div className="flex-shrink-0 w-20 h-20 bg-neutral-800 flex items-center justify-center overflow-hidden">
+          {profile?.avatar ? (
+            <img src={profile.avatar} alt={companyData.name} className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-3xl font-bold text-white">
+              {companyData.name?.charAt(0)}
+            </span>
+          )}
+        </div>
+        <div className="flex-grow">
+          <h1 className="text-4xl font-bold text-white mb-2">{companyData.name}</h1>
+          {companyData.website && (
+            <a
+              href={companyData.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-neutral-400 hover:text-white text-sm font-mono mb-3"
+            >
+              <Globe size={14} /> {companyData.website}
+            </a>
+          )}
+          {companyData.description && (
+            <p className="text-neutral-300 text-sm leading-relaxed max-w-2xl">
+              {companyData.description}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {profile?.culture_notes && (
+        <div className="bg-black border border-neutral-800 p-6 mb-8">
+          <h2 className="text-lg font-bold text-white mb-3 font-mono">About Working Here</h2>
+          <p className="text-neutral-400 text-sm leading-relaxed">{profile.culture_notes}</p>
+        </div>
+      )}
+
+      <div className="bg-black border border-neutral-800 p-6">
+        <h2 className="text-xl font-bold text-white mb-6 font-mono">
+          Open Residency Positions ({postings?.length ?? 0})
+        </h2>
+        {!postings || postings.length === 0 ? (
+          <p className="text-neutral-500 text-center py-8">No open positions at this time.</p>
+        ) : (
+          <div className="space-y-4">
+            {postings.map((job: any) => (
+              <div key={job.id} className="border border-neutral-700 p-5 hover:border-neutral-500 transition-colors">
+                <div className="flex items-center gap-3 mb-2">
+                  <h3 className="text-lg font-semibold text-white">{job.job_title}</h3>
+                  <span className="text-xs font-mono text-amber-400 border border-amber-700 px-2 py-0.5">
+                    Residency {job.residency}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 text-sm text-neutral-400 mb-3">
+                  {job.location && (
+                    <span className="flex items-center gap-1"><MapPin size={13} /> {job.location}</span>
+                  )}
+                  {job.salary && (
+                    <span className="flex items-center gap-1"><EuroIcon size={13} /> {job.salary.toLocaleString()}/mo</span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <Users size={13} /> {job.position_count} position{job.position_count !== 1 ? "s" : ""}
+                  </span>
+                  {job.accommodation_support && (
+                    <span className="flex items-center gap-1 text-green-400"><House size={13} /> Housing provided</span>
+                  )}
+                </div>
+                {job.description && (
+                  <p className="text-neutral-500 text-sm line-clamp-2">{job.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-6">
+        <Link href="/job-postings" className="text-neutral-400 hover:text-white text-sm font-mono">
+          Back to all postings
+        </Link>
+      </div>
+    </div>
+  )
 }
