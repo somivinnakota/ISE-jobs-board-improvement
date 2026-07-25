@@ -32,35 +32,48 @@ export default function ExportButton() {
 
       if (error) throw error
 
-      // Build CSV
+      // Group by student
+      const grouped: Record<string, any[]> = {}
+      for (const row of data ?? []) {
+        const email = row.profiles?.email ?? "Unknown"
+        if (!grouped[email]) grouped[email] = []
+        grouped[email].push(row)
+      }
+
+      // Build CSV with student sections
       const headers = [
-        "Student Email",
-        "Year",
-        "Rank",
-        "Job Title",
-        "Company",
-        "Residency",
-        "Location",
-        "Salary",
-        "Submitted At",
+        "Student Email", "Year", "Rank", "Job Title",
+        "Company", "Residency", "Location", "Salary", "Submitted At",
       ]
 
-      const rows = (data ?? []).map((row: any) => [
-        row.profiles?.email ?? "",
-        row.profiles?.year ?? "",
-        row.rank,
-        row.job_postings?.job_title ?? "",
-        row.job_postings?.companies?.name ?? "",
-        row.job_postings?.residency ?? "",
-        row.job_postings?.location ?? "",
-        row.job_postings?.salary ?? "",
-        new Date(row.updated_at).toLocaleDateString(),
-      ])
+      const csvLines: string[] = [headers.join(",")]
 
-      const csv = [
-        headers.join(","),
-        ...rows.map(row => row.map((cell: any) => `"${cell}"`).join(","))
-      ].join("\n")
+      for (const [email, rankings] of Object.entries(grouped)) {
+        // Separator row with student email
+        csvLines.push(`"--- ${email} ---","","","","","","","",""`)
+
+        // Sort by rank
+        const sorted = rankings.sort((a, b) => a.rank - b.rank)
+
+        for (const row of sorted) {
+          csvLines.push([
+            row.profiles?.email ?? "",
+            row.profiles?.year ?? "",
+            row.rank,
+            row.job_postings?.job_title ?? "",
+            row.job_postings?.companies?.name ?? "",
+            row.job_postings?.residency ?? "",
+            row.job_postings?.location ?? "",
+            row.job_postings?.salary ?? "",
+            new Date(row.updated_at).toLocaleDateString(),
+          ].map((cell: any) => `"${cell}"`).join(","))
+        }
+
+        // Blank line between students
+        csvLines.push("")
+      }
+
+      const csv = csvLines.join("\n")
 
       // Download
       const blob = new Blob([csv], { type: "text/csv" })
