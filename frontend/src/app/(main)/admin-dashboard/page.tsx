@@ -1,11 +1,11 @@
 import AnimatedHeroText from "@/components/animated-hero";
 import { FloatingLink } from "@/components/home/floating-link";
-import { LayoutDashboard, UserPlus, GitCompare, CheckCircle, XCircle, Archive, Download } from "lucide-react";
+import { LayoutDashboard, UserPlus, GitCompare, CheckCircle, XCircle, Archive } from "lucide-react";
 import UpcomingDeadlines from "@/components/admin/upcoming-deadlines";
 import { createClient } from "@/lib/server";
 import { revalidatePath } from "next/cache";
 import ExportButton from "@/components/admin/export-button"
-
+import ExportPostInterviewButton from "@/components/admin/export-post-interview-button"
 
 async function approvePosting(formData: FormData) {
   'use server';
@@ -48,10 +48,6 @@ async function toggleRankingPeriod(formData: FormData) {
     .eq('residency', residency);
   revalidatePath('/admin-dashboard');
 }
-async function exportSubmissions() {
-  'use server';
-  // Handled client-side — see ExportButton component
-}
 
 export default async function AdminDashboard() {
   const supabase = await createClient();
@@ -76,10 +72,11 @@ export default async function AdminDashboard() {
 
   // Student submission monitor
   const { data: allStudents } = await supabase
-  .from('profiles')
-  .select('id, email, year')
-  .in('role', ['student', 'admin']);
+    .from('profiles')
+    .select('id, email, year')
+    .in('role', ['student', 'admin']);
 
+  // Pre-interview submissions
   const { data: submissions } = await supabase
     .from('pre_interview_rankings')
     .select('student_id, is_draft')
@@ -90,6 +87,18 @@ export default async function AdminDashboard() {
     total: allStudents?.length ?? 0,
     submitted: allStudents?.filter(s => submittedIds.has(s.id)).length ?? 0,
     notSubmitted: allStudents?.filter(s => !submittedIds.has(s.id)).length ?? 0,
+  };
+
+  // Post-interview submissions
+  const { data: postSubmissions } = await supabase
+    .from('post_interview_rankings')
+    .select('student_id, is_draft')
+    .eq('is_draft', false);
+
+  const postSubmittedIds = new Set(postSubmissions?.map(s => s.student_id) ?? []);
+  const postStudentStats = {
+    submitted: allStudents?.filter(s => postSubmittedIds.has(s.id)).length ?? 0,
+    notSubmitted: allStudents?.filter(s => !postSubmittedIds.has(s.id)).length ?? 0,
   };
 
   // Ranking periods
@@ -194,12 +203,12 @@ export default async function AdminDashboard() {
         )}
       </div>
 
-      {/* Student submission monitor — NEW */}
+      {/* Pre-interview student submissions */}
       <div className="bg-black border border-neutral-800 p-6 mb-10">
         <div className="flex items-center justify-between mb-6">
-  <h2 className="text-2xl font-bold text-white">Student Submissions</h2>
-  <ExportButton />
-</div>
+          <h2 className="text-2xl font-bold text-white">Pre-Interview Submissions</h2>
+          <ExportButton />
+        </div>
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-neutral-900 p-4 text-center">
             <p className="text-xs text-neutral-500 font-mono uppercase mb-1">Total Students</p>
@@ -214,8 +223,6 @@ export default async function AdminDashboard() {
             <p className="text-3xl font-bold text-amber-400">{studentStats.notSubmitted}</p>
           </div>
         </div>
-
-        {/* Student list */}
         {allStudents && allStudents.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm font-mono">
@@ -248,7 +255,55 @@ export default async function AdminDashboard() {
         )}
       </div>
 
-      {/* Ranking period controls — NEW */}
+      {/* Post-interview submissions */}
+      <div className="bg-black border border-neutral-800 p-6 mb-10">
+        <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-white">Post-Interview Submissions</h2>
+        <ExportPostInterviewButton />
+        </div>
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-neutral-900 p-4 text-center border border-green-800">
+            <p className="text-xs text-green-500 font-mono uppercase mb-1">Submitted</p>
+            <p className="text-3xl font-bold text-green-400">{postStudentStats.submitted}</p>
+          </div>
+          <div className="bg-neutral-900 p-4 text-center border border-amber-800">
+            <p className="text-xs text-amber-500 font-mono uppercase mb-1">Not Submitted</p>
+            <p className="text-3xl font-bold text-amber-400">{postStudentStats.notSubmitted}</p>
+          </div>
+        </div>
+        {allStudents && allStudents.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm font-mono">
+              <thead>
+                <tr className="border-b border-neutral-800 text-neutral-500 text-left">
+                  <th className="pb-3 pr-4">Email</th>
+                  <th className="pb-3 pr-4">Year</th>
+                  <th className="pb-3">Post-Interview Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allStudents.map((student: any) => (
+                  <tr key={student.id} className="border-b border-neutral-900">
+                    <td className="py-2 pr-4 text-white">{student.email}</td>
+                    <td className="py-2 pr-4 text-neutral-400">Year {student.year}</td>
+                    <td className="py-2">
+                      {postSubmittedIds.has(student.id) ? (
+                        <span className="text-green-400 text-xs border border-green-800 px-2 py-0.5">✓ Submitted</span>
+                      ) : (
+                        <span className="text-amber-400 text-xs border border-amber-800 px-2 py-0.5">Pending</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-neutral-500 text-center py-4">No students found.</p>
+        )}
+      </div>
+
+      {/* Ranking period controls */}
       <div className="bg-black border border-neutral-800 p-6 mb-10">
         <h2 className="text-2xl font-bold text-white mb-2">Ranking Periods</h2>
         <p className="text-neutral-400 text-sm mb-6">Open or close ranking submission windows for each residency.</p>
@@ -276,7 +331,7 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      {/* Archive management — NEW */}
+      {/* Archive management */}
       <div className="bg-black border border-neutral-800 p-6 mb-10">
         <h2 className="text-2xl font-bold text-white mb-2">Archive Postings</h2>
         <p className="text-neutral-400 text-sm mb-6">Archive approved postings once a residency cycle is complete.</p>

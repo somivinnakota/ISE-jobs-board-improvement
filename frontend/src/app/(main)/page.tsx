@@ -1,8 +1,10 @@
 import AnimatedHeroText from "@/components/animated-hero";
 import { FloatingLink } from "@/components/home/floating-link";
-import { BriefcaseBusiness, LayoutDashboard, ListOrdered, UserPen, Users, ShieldCheck } from "lucide-react";
+import { BriefcaseBusiness, LayoutDashboard, ListOrdered, UserPen, ShieldCheck, ClipboardList } from "lucide-react";
 import { createClient } from "@/lib/server";
 import { getRole } from "@/app/api/user";
+
+
 
 export default async function Home() {
   const role = await getRole();
@@ -64,7 +66,7 @@ export default async function Home() {
     <p className="text-neutral-300 dark:text-neutral-700">
       View residency partners, job postings, and submit choices.
     </p>
-    <div className="flex flex-row gap-x-3 pt-4">
+    <div className="flex flex-row flex-wrap gap-3 pt-4">
       <FloatingLink href="/job-postings">
         <BriefcaseBusiness size={18} className="min-h-5 min-w-5 text-sm transition-all duration-100 group-hover:scale-110" />
         Job Postings
@@ -72,6 +74,10 @@ export default async function Home() {
       <FloatingLink href="/pre-interview-rankings">
         <ListOrdered size={22} className="min-h-5 min-w-5 text-sm transition-all duration-100 group-hover:scale-110" />
         Rank Your Choices
+      </FloatingLink>
+      <FloatingLink href="/student/post-interview-rankings">
+        <ClipboardList size={18} className="min-h-5 min-w-5 text-sm transition-all duration-100 group-hover:scale-110" />
+        Post-Interview Rankings
       </FloatingLink>
       <FloatingLink href="/edit-profile">
         <UserPen size={18} className="min-h-5 min-w-5 text-sm transition-all duration-100 group-hover:scale-110" />
