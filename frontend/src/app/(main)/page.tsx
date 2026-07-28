@@ -57,8 +57,8 @@ export default async function Home() {
           </div>
         )}
 
-        {/* Student panel — visible to students and admins only */}
-{(role === 'student' || role === 'admin') && (
+        {/* Student panel — visible to students */}
+{role === 'student' && (
   <div className="min-h-full flex flex-col justify-between w-full bg-black p-6 text-white dark:bg-white dark:text-black">
     <h2 className="pb-3 text-3xl">students</h2>
     <p className="text-neutral-300 dark:text-neutral-700">
