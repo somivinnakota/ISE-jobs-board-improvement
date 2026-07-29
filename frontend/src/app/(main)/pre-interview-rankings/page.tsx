@@ -114,6 +114,7 @@ export default function JobRankingPage() {
   const [saveStatus, setSaveStatus] = useState<{ [key: string]: 'saved' | 'saving' | 'unsaved' }>({});
   const [lastSaved, setLastSaved] = useState<{ [key: string]: Date | null }>({});
   const autoSaveTimers = useRef<{ [key: string]: ReturnType<typeof setTimeout> }>({});
+  const [submitted, setSubmitted] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -129,10 +130,14 @@ export default function JobRankingPage() {
         setSession(session);
 
         const { data: profile } = await supabase
-          .from('profiles')
-          .select('year')
-          .eq('id', session.user.id)
-          .single();
+       .from('profiles')
+       .select('year, pre_interview_submitted')
+       .eq('id', session.user.id)
+       .single();
+
+if (profile?.pre_interview_submitted) {
+  setSubmitted(true);
+}
 
         if (!profile?.year) { setLoading(false); return; }
         const userYear = profile.year;
@@ -160,11 +165,34 @@ export default function JobRankingPage() {
         const groups = getResidencyGroups(userYear);
         setResidencyGroups(groups);
 
-        const grouped: { [key: string]: JobPosting[] } = {};
-        groups.forEach(g => {
-          grouped[g.label] = filtered.filter(job => g.residencies.includes(job.residency));
-        });
-        setJobsByResidency(grouped);
+        // Load any saved draft rankings to restore order
+const { data: savedRankings } = await supabase
+  .from('pre_interview_rankings')
+  .select('job_posting_id, rank')
+  .eq('student_id', session.user.id)
+  .eq('is_draft', true)
+  .order('rank', { ascending: true });
+
+const rankMap = new Map(
+  (savedRankings ?? []).map(r => [r.job_posting_id, r.rank])
+);
+
+const grouped: { [key: string]: JobPosting[] } = {};
+groups.forEach(g => {
+  const groupJobs = filtered.filter(job => g.residencies.includes(job.residency));
+  
+  // If we have saved rankings for this group, sort by them
+  if (savedRankings && savedRankings.length > 0) {
+    groupJobs.sort((a, b) => {
+      const rankA = rankMap.get(a.id) ?? 999;
+      const rankB = rankMap.get(b.id) ?? 999;
+      return rankA - rankB;
+    });
+  }
+  
+  grouped[g.label] = groupJobs;
+});
+      setJobsByResidency(grouped);
       } catch (err) {
         console.error('Error loading rankings:', err);
       } finally {
@@ -216,30 +244,67 @@ export default function JobRankingPage() {
   }
 
   async function handleSubmit(label: string) {
-    if (!session) return;
-    setSubmitting(true);
-    try {
-      const supabase = createClient();
-      const jobs = jobsByResidency[label];
-      const userId = session.user.id;
-      await supabase.from('pre_interview_rankings').delete()
-        .eq('student_id', userId).in('job_posting_id', jobs.map(j => j.id));
-      const { error } = await supabase.from('pre_interview_rankings').insert(
-        jobs.map((job, i) => ({ student_id: userId, job_posting_id: job.id, rank: i + 1, is_draft: false }))
-      );
-      if (error) throw error;
-      alert(`${label} rankings submitted!`);
-    } catch (err) {
-      console.error(err);
-      alert(`Failed to submit ${label} rankings`);
-    } finally {
-      setSubmitting(false);
-    }
+  if (!session) return;
+  setSubmitting(true);
+  try {
+    const supabase = createClient();
+    const jobs = jobsByResidency[label];
+    const userId = session.user.id;
+    const jobIds = jobs.map(j => j.id);
+
+    await supabase
+      .from('pre_interview_rankings')
+      .delete()
+      .eq('student_id', userId)
+      .in('job_posting_id', jobIds);
+
+    const { error } = await supabase.from('pre_interview_rankings').insert(
+      jobs.map((job, index) => ({
+        student_id: userId,
+        job_posting_id: job.id,
+        rank: index + 1,
+        is_draft: false,
+      }))
+    );
+
+    if (error) throw error;
+
+    // Lock the submission
+    await supabase
+      .from('profiles')
+      .update({ pre_interview_submitted: true })
+      .eq('id', userId);
+
+    setSubmitted(true);
+    alert(`${label} rankings submitted and locked!`);
+  } catch (error) {
+    console.error('Submit error:', error);
+    alert(`Failed to submit ${label} rankings`);
+  } finally {
+    setSubmitting(false);
   }
+}
 
   if (loading) return <main className="pt-28 px-6 max-w-4xl mx-auto"><LoadingSpinner /></main>;
   if (!session) return <main className="pt-28 px-6 max-w-4xl mx-auto"><p className="text-center">Please log in.</p></main>;
   if (!year) return <main className="pt-28 px-6 max-w-4xl mx-auto"><p className="text-center">Your profile does not have a year set. Please contact an administrator.</p></main>;
+  if (submitted) {
+  return (
+    <main className="pt-28 px-6 max-w-4xl mx-auto pb-8">
+      <div className="bg-black border border-green-800 p-8 text-center">
+        <div className="text-green-400 text-5xl mb-4">✓</div>
+        <h1 className="text-2xl font-bold text-white mb-2">Rankings Submitted</h1>
+        <p className="text-neutral-400 mb-6">
+          Your pre-interview rankings have been submitted and locked. 
+          Please contact an ISE administrator if you need to make changes.
+        </p>
+        <a href="/" className="bg-white text-black px-6 py-2 font-semibold hover:bg-neutral-200">
+          Back to Home
+        </a>
+      </div>
+    </main>
+  );
+}
 
   return (
     <main className="pt-28 px-6 max-w-4xl mx-auto pb-8">

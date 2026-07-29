@@ -49,10 +49,20 @@ async function toggleRankingPeriod(formData: FormData) {
   revalidatePath('/admin-dashboard');
 }
 
+async function unlockStudent(formData: FormData) {
+  'use server';
+  const studentId = formData.get('studentId') as string;
+  const supabase = await createClient();
+  await supabase
+    .from('profiles')
+    .update({ pre_interview_submitted: false })
+    .eq('id', studentId);
+  revalidatePath('/admin-dashboard');
+}
+
 export default async function AdminDashboard() {
   const supabase = await createClient();
 
-  // Pending postings
   const { data: pendingPostings } = await supabase
     .from('job_postings')
     .select(`id, job_title, location, residency, salary, position_count, 
@@ -61,7 +71,6 @@ export default async function AdminDashboard() {
     .eq('status', 'pending')
     .order('created_at', { ascending: true });
 
-  // Stats
   const { data: allPostings } = await supabase.from('job_postings').select('status');
   const stats = {
     pending: allPostings?.filter(p => p.status === 'pending').length ?? 0,
@@ -70,13 +79,11 @@ export default async function AdminDashboard() {
     total: allPostings?.length ?? 0,
   };
 
-  // Student submission monitor
   const { data: allStudents } = await supabase
     .from('profiles')
-    .select('id, email, year')
+    .select('id, email, year, pre_interview_submitted')
     .in('role', ['student', 'admin']);
 
-  // Pre-interview submissions
   const { data: submissions } = await supabase
     .from('pre_interview_rankings')
     .select('student_id, is_draft')
@@ -89,7 +96,6 @@ export default async function AdminDashboard() {
     notSubmitted: allStudents?.filter(s => !submittedIds.has(s.id)).length ?? 0,
   };
 
-  // Post-interview submissions
   const { data: postSubmissions } = await supabase
     .from('post_interview_rankings')
     .select('student_id, is_draft')
@@ -101,13 +107,11 @@ export default async function AdminDashboard() {
     notSubmitted: allStudents?.filter(s => !postSubmittedIds.has(s.id)).length ?? 0,
   };
 
-  // Ranking periods
   const { data: rankingPeriods } = await supabase
     .from('ranking_periods')
     .select('*')
     .order('residency');
 
-  // Approved postings for archive management
   const { data: approvedPostings } = await supabase
     .from('job_postings')
     .select(`id, job_title, residency, companies ( name )`)
@@ -230,7 +234,8 @@ export default async function AdminDashboard() {
                 <tr className="border-b border-neutral-800 text-neutral-500 text-left">
                   <th className="pb-3 pr-4">Email</th>
                   <th className="pb-3 pr-4">Year</th>
-                  <th className="pb-3">Status</th>
+                  <th className="pb-3 pr-4">Status</th>
+                  <th className="pb-3">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -238,11 +243,24 @@ export default async function AdminDashboard() {
                   <tr key={student.id} className="border-b border-neutral-900">
                     <td className="py-2 pr-4 text-white">{student.email}</td>
                     <td className="py-2 pr-4 text-neutral-400">Year {student.year}</td>
-                    <td className="py-2">
-                      {submittedIds.has(student.id) ? (
+                    <td className="py-2 pr-4">
+                      {student.pre_interview_submitted ? (
+                        <span className="text-green-400 text-xs border border-green-800 px-2 py-0.5">✓ Locked</span>
+                      ) : submittedIds.has(student.id) ? (
                         <span className="text-green-400 text-xs border border-green-800 px-2 py-0.5">✓ Submitted</span>
                       ) : (
                         <span className="text-amber-400 text-xs border border-amber-800 px-2 py-0.5">Pending</span>
+                      )}
+                    </td>
+                    <td className="py-2">
+                      {student.pre_interview_submitted && (
+                        <form action={unlockStudent}>
+                          <input type="hidden" name="studentId" value={student.id} />
+                          <button type="submit"
+                            className="text-xs text-neutral-400 hover:text-white border border-neutral-700 hover:border-white px-2 py-1">
+                            Unlock
+                          </button>
+                        </form>
                       )}
                     </td>
                   </tr>
@@ -258,8 +276,8 @@ export default async function AdminDashboard() {
       {/* Post-interview submissions */}
       <div className="bg-black border border-neutral-800 p-6 mb-10">
         <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">Post-Interview Submissions</h2>
-        <ExportPostInterviewButton />
+          <h2 className="text-2xl font-bold text-white">Post-Interview Submissions</h2>
+          <ExportPostInterviewButton />
         </div>
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-neutral-900 p-4 text-center border border-green-800">
