@@ -12,7 +12,37 @@ async function approvePosting(formData: FormData) {
   'use server';
   const id = formData.get('id') as string;
   const supabase = await createClient();
+
+  const { data: posting } = await supabase
+    .from('job_postings')
+    .select(`job_title, contact_email, companies ( name )`)
+    .eq('id', id)
+    .single();
+
   await supabase.from('job_postings').update({ status: 'approved' }).eq('id', id);
+
+  if (posting?.contact_email) {
+    const { Resend } = await import('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    await resend.emails.send({
+      from: 'ISE Jobs Board <onboarding@resend.dev>',
+      to: posting.contact_email,
+      subject: `Your job posting has been approved — ${posting.job_title}`,
+      html: `
+        <div style="font-family: monospace; max-width: 600px; margin: 0 auto; padding: 24px;">
+          <h1 style="font-size: 24px; margin-bottom: 8px;">Posting Approved ✓</h1>
+          <p style="color: #555;">Your job posting has been reviewed and approved by the ISE team.</p>
+          <div style="background: #f4f4f4; padding: 16px; margin: 24px 0; border-left: 4px solid #2D6A4F;">
+            <p style="margin: 0; font-weight: bold;">${posting.job_title}</p>
+            <p style="margin: 4px 0 0; color: #555;">${(posting.companies as any)?.name}</p>
+          </div>
+          <p>Your posting is now live on the ISE Jobs Board and visible to students.</p>
+          <p style="color: #888; font-size: 12px; margin-top: 32px;">ISE Residency Programme — University of Limerick</p>
+        </div>
+      `,
+    });
+  }
+
   revalidatePath('/admin-dashboard');
 }
 
@@ -21,9 +51,45 @@ async function rejectPosting(formData: FormData) {
   const id = formData.get('id') as string;
   const reason = formData.get('reason') as string;
   const supabase = await createClient();
+
+  const { data: posting } = await supabase
+    .from('job_postings')
+    .select(`job_title, contact_email, companies ( name )`)
+    .eq('id', id)
+    .single();
+
   await supabase.from('job_postings')
     .update({ status: 'rejected', rejection_reason: reason })
     .eq('id', id);
+
+  if (posting?.contact_email) {
+    const { Resend } = await import('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    await resend.emails.send({
+      from: 'ISE Jobs Board <onboarding@resend.dev>',
+      to: posting.contact_email,
+      subject: `Update on your job posting — ${posting.job_title}`,
+      html: `
+        <div style="font-family: monospace; max-width: 600px; margin: 0 auto; padding: 24px;">
+          <h1 style="font-size: 24px; margin-bottom: 8px;">Posting Not Approved</h1>
+          <p style="color: #555;">Your job posting has been reviewed by the ISE team and requires changes before it can go live.</p>
+          <div style="background: #f4f4f4; padding: 16px; margin: 24px 0; border-left: 4px solid #C1121F;">
+            <p style="margin: 0; font-weight: bold;">${posting.job_title}</p>
+            <p style="margin: 4px 0 0; color: #555;">${(posting.companies as any)?.name}</p>
+          </div>
+          ${reason ? `
+          <div style="background: #fff8f0; padding: 16px; margin: 16px 0; border-left: 4px solid #E09F3E;">
+            <p style="margin: 0; font-weight: bold; color: #E09F3E;">Reason:</p>
+            <p style="margin: 8px 0 0;">${reason}</p>
+          </div>
+          ` : ''}
+          <p>Please log in to your partner dashboard to update and resubmit your posting.</p>
+          <p style="color: #888; font-size: 12px; margin-top: 32px;">ISE Residency Programme — University of Limerick</p>
+        </div>
+      `,
+    });
+  }
+
   revalidatePath('/admin-dashboard');
 }
 
@@ -309,7 +375,7 @@ export default async function AdminDashboard() {
                       {postSubmittedIds.has(student.id) ? (
                         <span className="text-green-400 text-xs border border-green-800 px-2 py-0.5">✓ Submitted</span>
                       ) : (
-                        <span className="text-amber-400 text-xs border border-amber-800 px-2 py-0.5">Pending</span>
+                        <span className="text-amber-400 text-xs border border-amber-800 px-2 py.0.5">Pending</span>
                       )}
                     </td>
                   </tr>
@@ -351,14 +417,14 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Archive management */}
-<div className="bg-black border border-neutral-800 p-6 mb-10">
-  <h2 className="text-2xl font-bold text-white mb-2">Archive Postings</h2>
-  <p className="text-neutral-400 text-sm mb-6">Archive approved postings once a residency cycle is complete.</p>
-  <ArchiveTable 
-    postings={(approvedPostings ?? []) as any} 
-    archiveAction={archivePosting} 
-  />
-</div>
+      <div className="bg-black border border-neutral-800 p-6 mb-10">
+        <h2 className="text-2xl font-bold text-white mb-2">Archive Postings</h2>
+        <p className="text-neutral-400 text-sm mb-6">Archive approved postings once a residency cycle is complete.</p>
+        <ArchiveTable
+          postings={(approvedPostings ?? []) as any}
+          archiveAction={archivePosting}
+        />
+      </div>
 
       {/* Existing panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
