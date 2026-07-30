@@ -27,6 +27,29 @@ export default async function RPDashboard() {
       </div>
     );
   }
+  // Get current cycle phase from ranking periods
+const { data: rankingPeriods } = await supabase
+  .from('ranking_periods')
+  .select('residency, is_open')
+  .order('residency');
+
+const anyOpen = rankingPeriods?.some(p => p.is_open) ?? false;
+const openResidencies = rankingPeriods?.filter(p => p.is_open).map(p => p.residency) ?? [];
+
+// Determine current phase
+const phases = [
+  { label: "Submissions Open", done: true, active: false },
+  { label: "Admin Review", done: true, active: false },
+  {
+    label: anyOpen
+      ? `Ranking Live (R${openResidencies.join(', R')})`
+      : "Ranking",
+    done: false,
+    active: anyOpen,
+  },
+  { label: "Interviews", done: false, active: false },
+  { label: "Outcomes", done: false, active: false },
+];
 
   // Get all job postings for this company
 const { data: jobPostings } = await supabase
@@ -87,13 +110,7 @@ const { data: jobPostings } = await supabase
       <div className="bg-black border border-neutral-800 p-6 mb-10">
         <h2 className="text-lg font-bold text-white mb-4 font-mono">Residency Cycle — Current Phase</h2>
         <div className="flex flex-col lg:flex-row gap-2">
-          {[
-            { label: "Submissions Open", done: true },
-            { label: "Admin Review",     done: true },
-            { label: "Ranking Live",     done: false, active: true },
-            { label: "Interviews",       done: false },
-            { label: "Outcomes",         done: false },
-          ].map((phase, i) => (
+          {phases.map((phase, i) => (
             <div key={i} className="flex items-center gap-2 flex-1">
               <div className={`flex-1 p-3 text-center text-xs font-mono border ${
                 phase.active
