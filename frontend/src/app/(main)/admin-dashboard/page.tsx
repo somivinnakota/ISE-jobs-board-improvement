@@ -6,6 +6,7 @@ import { createClient } from "@/lib/server";
 import { revalidatePath } from "next/cache";
 import ExportButton from "@/components/admin/export-button"
 import ExportPostInterviewButton from "@/components/admin/export-post-interview-button"
+import ArchiveTable from "@/components/admin/archive-table"
 
 async function approvePosting(formData: FormData) {
   'use server';
@@ -350,44 +351,14 @@ export default async function AdminDashboard() {
       </div>
 
       {/* Archive management */}
-      <div className="bg-black border border-neutral-800 p-6 mb-10">
-        <h2 className="text-2xl font-bold text-white mb-2">Archive Postings</h2>
-        <p className="text-neutral-400 text-sm mb-6">Archive approved postings once a residency cycle is complete.</p>
-        {!approvedPostings || approvedPostings.length === 0 ? (
-          <p className="text-neutral-500 text-center py-4">No approved postings to archive.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm font-mono">
-              <thead>
-                <tr className="border-b border-neutral-800 text-neutral-500 text-left">
-                  <th className="pb-3 pr-4">Job Title</th>
-                  <th className="pb-3 pr-4">Company</th>
-                  <th className="pb-3 pr-4">Residency</th>
-                  <th className="pb-3">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {approvedPostings.map((posting: any) => (
-                  <tr key={posting.id} className="border-b border-neutral-900 hover:bg-neutral-900/40">
-                    <td className="py-2 pr-4 text-white">{posting.job_title}</td>
-                    <td className="py-2 pr-4 text-neutral-400">{posting.companies?.name}</td>
-                    <td className="py-2 pr-4 text-neutral-400">R{posting.residency}</td>
-                    <td className="py-2">
-                      <form action={archivePosting}>
-                        <input type="hidden" name="id" value={posting.id} />
-                        <button type="submit"
-                          className="flex items-center gap-1 text-xs text-neutral-400 hover:text-amber-400 border border-neutral-700 hover:border-amber-700 px-2 py-1">
-                          <Archive size={12} /> Archive
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+<div className="bg-black border border-neutral-800 p-6 mb-10">
+  <h2 className="text-2xl font-bold text-white mb-2">Archive Postings</h2>
+  <p className="text-neutral-400 text-sm mb-6">Archive approved postings once a residency cycle is complete.</p>
+  <ArchiveTable 
+    postings={(approvedPostings ?? []) as any} 
+    archiveAction={archivePosting} 
+  />
+</div>
 
       {/* Existing panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
